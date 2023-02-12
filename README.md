@@ -1,5 +1,14 @@
-# DAS prototype
+# Model DAS
+Model DAS is a repository, forked from [DAS Prototype](https://github.com/ChainSafe/das-prototype), that aims to model and benchmark a possible solution to the [Data Availability Sampling Networking Problem](https://github.com/ethereum/requests-for-proposals/blob/master/open-rfps/das.md) through [Discovery v5 overlay subnetworks](https://notes.ethereum.org/@pipermerriam/B1SS-nhad).
 
+I'm currently working on implementing the networking stack needed to create a Secure K-DHT discv5 overlay to support Data Availability Sampling.  Concepts from [DAS Playground](https://github.com/EchoAlice/das-playground) are going to be implemnted here.
+
+Check out Model DAS's [Project Proposal](https://hackmd.io/@nWQbi7_nQnWPS0Xt_GbOVQ/HyHiEpD8j).
+
+
+
+# Original Readme:
+-------------------------------------------------------------------------
 This repo contains various prototypes of the core DAS components - dissemination and random sampling.
 
 ## Usage
