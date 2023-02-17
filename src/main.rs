@@ -410,7 +410,7 @@ async fn construct_and_start(
                 .unwrap()
                 .map(|r| r.unwrap())
                 .collect();
-            paths.sort_by_key(|dir| dir.metadata().unwrap().created().unwrap());
+            paths.sort_by_key(|dir| dir.metadata().unwrap().modified().unwrap());
             paths.last().unwrap().path()
         }
         snap => PathBuf::from(&opts.cache_dir).join(snap),
@@ -1845,7 +1845,7 @@ fn get_snapshot_file<S: AsRef<str>>(opts: &Options, file: S) -> PathBuf {
                 .unwrap()
                 .map(|r| r.unwrap())
                 .collect();
-            paths.sort_by_key(|dir| dir.metadata().unwrap().created().unwrap());
+            paths.sort_by_key(|dir| dir.metadata().unwrap().modified().unwrap());
             paths.last().unwrap().path().join(file.as_ref())
         }
         snap => PathBuf::from(&opts.cache_dir)
