@@ -121,6 +121,7 @@ impl DASNode {
         };
         let validator = Arc::new(DASValidator);
 
+        // Where the overlay table is created and populated
         let (overlay, service) = OverlayProtocol::new(
             config,
             discovery.clone(),
@@ -130,6 +131,19 @@ impl DASNode {
             protocol,
             validator,
         );
+
+        // Where the secure overlay WILL be created and populated
+        /*
+        let (overlay, service) = OverlayProtocol::new(
+            config,
+            discovery.clone(),
+            utp_listener_tx,
+            storage,
+            Distance::MAX,
+            protocol,
+            validator,
+        );
+        */
 
         (
             Self {
@@ -148,17 +162,21 @@ fn main() {
     cli_batteries::run(version!(), app);
 }
 
+// Instantiates DASNodes, then plays simulation
 async fn app(options: Options) -> eyre::Result<()> {
+    // Creates discv5 servers
     let discv5_servers = {
         let address = options.ip_listen.parse::<Ipv4Addr>().unwrap();
         construct_and_start(&options, address, options.port_udp, options.node_count).await
     };
 
+    // Collects node ids from discv5_servers
     let node_ids = discv5_servers
         .iter()
         .map(|e| e.local_enr().node_id())
         .collect::<Vec<_>>();
 
+    // Collects enrs from discv5_servers
     let enrs = Arc::new(
         discv5_servers
             .iter()
@@ -168,11 +186,15 @@ async fn app(options: Options) -> eyre::Result<()> {
 
     let mut das_nodes = vec![];
 
+    // What're these two HashMaps for?
     let enr_to_libp2p = Arc::new(RwLock::new(
         HashMap::<NodeId, (PeerId, Multiaddr)>::default(),
     ));
-    let libp2p_to_enr = Arc::new(RwLock::new(HashMap::<PeerId, NodeId>::default()));
+    let libp2p_to_enr = Arc::new(RwLock::new(
+        HashMap::<PeerId, NodeId>::default()
+    ));
 
+    // Creates message counter for...    logging???
     let (msg_counter, msg_count_rx) = mpsc::unbounded_channel::<MsgCountCmd>();
     {
         tokio::spawn(async move {
@@ -194,10 +216,12 @@ async fn app(options: Options) -> eyre::Result<()> {
         });
     }
 
+    // Instantiate DASNodes
     for (i, discv5) in discv5_servers.into_iter().enumerate() {
         let mut events_str = ReceiverStream::new(discv5.event_stream().await.unwrap());
         let opts = options.clone();
 
+        // Create Libp2p Daemon and Service for our DASNode 
         let (mut libp2p_worker, libp2p_msgs, libp2p_service) = {
             let keypair = identity::Keypair::generate_ed25519();
             let peer_id = PeerId::from(keypair.public());
@@ -220,6 +244,8 @@ async fn app(options: Options) -> eyre::Result<()> {
         let (utp_events_tx, utp_listener_tx, mut utp_listener_rx, mut utp_listener) =
             UtpListener::new(discovery.clone());
         tokio::spawn(async move { utp_listener.start().await });
+        
+        // Where we instantiate our DASNode!!! 
         let (das_node, overlay_service) = DASNode::new(discovery, utp_listener_tx, libp2p_service);
         das_nodes.push(das_node.clone());
 
@@ -230,10 +256,12 @@ async fn app(options: Options) -> eyre::Result<()> {
             });
         }
         clone_all!(enr_to_libp2p, libp2p_to_enr, msg_counter, node_ids);
+        
+        // Creates message processing task 
         tokio::spawn(async move {
             let mut overlay_service = overlay_service;
             let mut bucket_refresh_interval = tokio::time::interval(Duration::from_secs(60));
-
+        
             loop {
                 select! {
                     Some(e) = events_str.next() => {
@@ -370,6 +398,8 @@ async fn app(options: Options) -> eyre::Result<()> {
             }
         });
     }
+
+    // Runs simulation
     let enrs_stats = enrs.clone();
     let stats_task = tokio::spawn(async move {
         play_simulation(
@@ -477,8 +507,10 @@ async fn construct_and_start(
         discv5_servers.push(discv5);
     }
 
+    // Where ENRs are added to routing tables
     discv5_servers = set_topology(&opts, discv5_servers);
 
+    // Starts discv5 servers
     for s in discv5_servers.iter_mut() {
         let ip4 = s.local_enr().ip4().unwrap();
         let udp4 = s.local_enr().udp4().unwrap();

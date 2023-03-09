@@ -1,5 +1,10 @@
-# Model DAS
-Model DAS is a repository, forked from [DAS Prototype](https://github.com/ChainSafe/das-prototype), that aims to model and benchmark a possible solution to the [Data Availability Sampling Networking Problem](https://github.com/ethereum/requests-for-proposals/blob/master/open-rfps/das.md) through [Discovery v5 overlay subnetworks](https://notes.ethereum.org/@pipermerriam/B1SS-nhad).
+# Motivation
+Full-scale Danksharding requires a lot of small pieces of data (samples), and attestations to said data, to be communicated efficiently across Ethereum's Consensus Layer p2p network.
+
+Some design questions around how this new information should be communicated is still up in the air and is known as the Data Availability Sampling Networking problem. Danny wrote a [Request For Proposals](https://github.com/ethereum/requests-for-proposals/blob/master/open-rfps/das.md) post which provides background to learn more about the problem.
+
+# Summary
+Model DAS is a forked repository from [DAS Prototype](https://github.com/ChainSafe/das-prototype) that aims to model and benchmark a possible solution to the [Data Availability Sampling Networking Problem](https://github.com/ethereum/requests-for-proposals/blob/master/open-rfps/das.md) through [Discovery v5 overlay subnetworks](https://notes.ethereum.org/@pipermerriam/B1SS-nhad).
 
 I'm currently working on implementing the networking stack needed to create a Secure K-DHT discv5 overlay to support Data Availability Sampling.  Concepts from [DAS Playground](https://github.com/EchoAlice/das-playground) are going to be implemnted here.
 
