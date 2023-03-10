@@ -17,8 +17,7 @@ use ssz_derive::{Decode, Encode};
 
 /// TODO:
 ///     - Add second overlay protocol struct for DASNode
-///     - Create SecureDAS content key and SecureDAS validator!
-///     - Initialize???
+///     - Initialize
 
 
 

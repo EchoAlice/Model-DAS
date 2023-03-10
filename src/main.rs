@@ -4,6 +4,7 @@ extern crate core;
 use crate::libp2p::Libp2pService;
 use crate::messages::DisseminationMsg;
 use crate::overlay::{DASContentKey, DASValidator};
+use crate::secure_overlay::{SecureDASContentKey, SecureDASValidator};
 use crate::utils::MsgCountCmd;
 use ::libp2p::kad::store::MemoryStore;
 use ::libp2p::multiaddr::Protocol::Tcp;
@@ -80,9 +81,11 @@ mod args;
 mod libp2p;
 mod messages;
 mod overlay;
+mod secure_overlay;
 mod utils;
 
 const DAS_PROTOCOL_ID: &str = "DAS";
+const SECURE_DAS_PROTOCOL_ID: &str = "SECURE_DAS";
 const DISSEMINATION_PROTOCOL_ID: &[u8] = b"D2S";
 
 #[derive(Clone)]
@@ -92,6 +95,7 @@ pub struct DASNode {
     samples: Arc<RwLock<HashMap<NodeId, usize>>>,
     handled_ids: Arc<RwLock<HashMap<Vec<u8>, usize>>>,
     overlay: Arc<OverlayProtocol<DASContentKey, XorMetric, DASValidator, MemoryContentStore>>,
+    secure_overlay: Arc<OverlayProtocol<SecureDASContentKey, XorMetric, SecureDASValidator, MemoryContentStore>>,
 }
 
 impl DASNode {
@@ -102,6 +106,7 @@ impl DASNode {
     ) -> (
         Self,
         OverlayService<DASContentKey, XorMetric, DASValidator, MemoryContentStore>,
+        OverlayService<SecureDASContentKey, XorMetric, SecureDASValidator, MemoryContentStore>,
     ) {
         let config = OverlayConfig {
             bootnode_enrs: discovery.discv5.table_entries_enr(),
@@ -112,38 +117,59 @@ impl DASNode {
             query_peer_timeout: Duration::from_secs(30),
             ..Default::default()
         };
+        // redundant but fix l8r 
+        let secure_config = OverlayConfig {
+            bootnode_enrs: discovery.discv5.table_entries_enr(),
+            // todo: setting low ping interval will hurt performance, investigate the impact of not having it
+            ping_queue_interval: Some(Duration::from_secs(10000)),
+            query_num_results: usize::MAX,
+            query_timeout: Duration::from_secs(60),
+            query_peer_timeout: Duration::from_secs(30),
+            ..Default::default()
+        };
+        
         let protocol = ProtocolId::Custom(DAS_PROTOCOL_ID.to_string());
+        let secure_protocol = ProtocolId::Custom(SECURE_DAS_PROTOCOL_ID.to_string());
+
+        // TODO:  Create one data store PER NODE and seperate diff overlay networks via key prefix. 
         let storage = {
             Arc::new(parking_lot::RwLock::new(MemoryContentStore::new(
                 discovery.discv5.local_enr().node_id(),
                 DistanceFunction::Xor,
             )))
         };
+        let secure_storage = {
+            Arc::new(parking_lot::RwLock::new(MemoryContentStore::new(
+                discovery.discv5.local_enr().node_id(),
+                DistanceFunction::Xor,
+            )))
+        };
+        
         let validator = Arc::new(DASValidator);
+        let secure_validator = Arc::new(SecureDASValidator);
 
         // Where the overlay table is created and populated
         let (overlay, service) = OverlayProtocol::new(
             config,
             discovery.clone(),
-            utp_listener_tx,
+            utp_listener_tx.clone(), ///
             storage,
             Distance::MAX,
             protocol,
             validator,
         );
 
-        // Where the secure overlay WILL be created and populated
-        /*
-        let (overlay, service) = OverlayProtocol::new(
-            config,
+        // Where the secure overlay is created and populateded.  
+        // TODO: Should i duplicate the utp_listener_tx or create a second channel for the different overlay? 
+        let (secure_overlay, secure_service) = OverlayProtocol::new(
+            secure_config,
             discovery.clone(),
-            utp_listener_tx,
-            storage,
+            utp_listener_tx.clone(),
+            secure_storage,
             Distance::MAX,
-            protocol,
-            validator,
+            secure_protocol,
+            secure_validator,
         );
-        */
 
         (
             Self {
@@ -152,8 +178,10 @@ impl DASNode {
                 samples: Default::default(),
                 handled_ids: Default::default(),
                 overlay: Arc::new(overlay),
+                secure_overlay: Arc::new(secure_overlay),
             },
             service,
+            secure_service,
         )
     }
 }
@@ -244,9 +272,9 @@ async fn app(options: Options) -> eyre::Result<()> {
         let (utp_events_tx, utp_listener_tx, mut utp_listener_rx, mut utp_listener) =
             UtpListener::new(discovery.clone());
         tokio::spawn(async move { utp_listener.start().await });
-        
+ 
         // Where we instantiate our DASNode!!! 
-        let (das_node, overlay_service) = DASNode::new(discovery, utp_listener_tx, libp2p_service);
+        let (das_node, overlay_service, secure_overlay_service) = DASNode::new(discovery, utp_listener_tx, libp2p_service);
         das_nodes.push(das_node.clone());
 
         let talk_wire = opts.wire_protocol.clone();
