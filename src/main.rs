@@ -117,10 +117,9 @@ impl DASNode {
             query_peer_timeout: Duration::from_secs(30),
             ..Default::default()
         };
-        // redundant but fix l8r 
+        // Feels redundant 
         let secure_config = OverlayConfig {
             bootnode_enrs: discovery.discv5.table_entries_enr(),
-            // todo: setting low ping interval will hurt performance, investigate the impact of not having it
             ping_queue_interval: Some(Duration::from_secs(10000)),
             query_num_results: usize::MAX,
             query_timeout: Duration::from_secs(60),
@@ -158,7 +157,6 @@ impl DASNode {
             protocol,
             validator,
         );
-
         // Where the secure overlay is created and populateded.  
         // TODO: Should i duplicate the utp_listener_tx or create a second channel for the different overlay? 
         let (secure_overlay, secure_service) = OverlayProtocol::new(
@@ -288,6 +286,7 @@ async fn app(options: Options) -> eyre::Result<()> {
         // Creates message processing task 
         tokio::spawn(async move {
             let mut overlay_service = overlay_service;
+            let mut secure_overlay_service = secure_overlay_service; 
             let mut bucket_refresh_interval = tokio::time::interval(Duration::from_secs(60));
         
             loop {
@@ -342,6 +341,25 @@ async fn app(options: Options) -> eyre::Result<()> {
 
                                         return;
                                     }
+                                    if protocol == ProtocolId::Custom(SECURE_DAS_PROTOCOL_ID.to_string()) {
+                                        println!("Enters SecureDAS Protocol");  
+                                        let talk_resp = match das_node.overlay.process_one_request(&req).await {
+                                        // let talk_resp = match node.secure_overlay.process_one_request(&req).await {
+                                            Ok(response) => discv5_overlay::portalnet::types::messages::Message::from(response).into(),
+                                            Err(err) => {
+                                                error!("Node {chan} Error processing request: {err}");
+                                                return;
+                                            },
+                                        };
+
+                                        if let Err(err) = req.respond(talk_resp) {
+                                            println!("Error");  
+                                            error!("Unable to respond to talk request: {}", err);
+                                            return;
+                                        }
+
+                                        return;
+                                    }
 
                                     let resp = handle_talk_request(req.node_id().clone(), req.protocol(), req.body().to_vec(), das_node, opts, enr_to_libp2p, node_ids, i).await;
                                     req.respond(resp);
@@ -367,6 +385,7 @@ async fn app(options: Options) -> eyre::Result<()> {
                             resp_tx.send(Ok(handle_talk_request(from, &protocol, payload, das_node, opts, enr_to_libp2p, node_ids, i).await));
                         });
                     },
+                    // Overlay message processing
                     Some(command) = overlay_service.command_rx.recv() => {
                         match command {
                             OverlayCommand::Request(request) => overlay_service.process_request(request),
@@ -401,6 +420,38 @@ async fn app(options: Options) -> eyre::Result<()> {
                             warn!("No request found for response");
                         }
                     }
+                    // Secure Overlay message processing
+                    Some(command) = secure_overlay_service.command_rx.recv() => {
+                        match command {
+                            OverlayCommand::Request(request) => { 
+                                println!("Processing Secure Overlay Request"); 
+                                secure_overlay_service.process_request(request)
+                            }, 
+                            _ => {}    
+                        }
+                    }
+                    Some(response) = secure_overlay_service.response_rx.recv() => {
+                        // Look up active request that corresponds to the response.
+                        let optional_active_request = secure_overlay_service.active_outgoing_requests.write().remove(&response.request_id);
+                        if let Some(active_request) = optional_active_request {
+                            println!("Send secure overlay response");
+                            println!("\n");
+                            // Send response to responder if present.
+                            if let Some(responder) = active_request.responder {
+                                let _ = responder.send(response.response.clone());
+                            }
+
+                            // Perform background processing.
+                            match response.response {
+                                Ok(response) => secure_overlay_service.process_response(response, active_request.destination, active_request.request, active_request.query_id),
+                                Err(error) => secure_overlay_service.process_request_failure(response.request_id, active_request.destination, error),
+                            }
+
+                        } else {
+                            println!("No request found for response");
+                        }
+                    }  
+                    // What is this? 
                     Some(Ok(node_id)) = overlay_service.peers_to_ping.next() => {
                         // If the node is in the routing table, then ping and re-queue the node.
                         let key = discv5::kbucket::Key::from(node_id);
@@ -426,6 +477,17 @@ async fn app(options: Options) -> eyre::Result<()> {
             }
         });
     }
+
+    // Sanity Checks for DAS + SecureDAS Routing Tables and Pings
+    println!("Overlay routing table: {:?}", das_nodes[2].overlay.table_entries_id()); 
+    println!("\n"); 
+    println!("Secure overlay routing table: {:?}", das_nodes[2].secure_overlay.table_entries_id()); 
+    println!("\n"); 
+
+    let das_ping = das_nodes[1].overlay.send_ping(das_nodes[2].overlay.local_enr());
+    das_ping.await;
+    let secure_das_ping = das_nodes[1].secure_overlay.send_ping(das_nodes[2].secure_overlay.local_enr());
+    secure_das_ping.await;
 
     // Runs simulation
     let enrs_stats = enrs.clone();
@@ -946,6 +1008,7 @@ async fn disseminate_samples(
     }
 }
 
+// What is this function returning?
 async fn disseminate_samples_recursively(
     keys: impl Iterator<Item = NodeId>,
     opts: &Options,
