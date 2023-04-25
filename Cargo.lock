@@ -1187,7 +1187,7 @@ dependencies = [
 [[package]]
 name = "discv5-overlay"
 version = "0.1.0"
-source = "git+https://github.com/timoth-y/discv5-overlay#50eb056713f0a223efcb24884dbda2e5dd9fcea5"
+source = "git+https://github.com/timoftime/discv5-overlay#8b5c2c5eb34f02641911c49c930dbe1859145ab8"
 dependencies = [
  "anyhow",
  "async-recursion",

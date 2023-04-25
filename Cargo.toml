@@ -33,7 +33,7 @@ delay_map = "0.1.1"
 
 chrono = "0.4.22"
 byteorder = "1.4.3"
-discv5-overlay = {git = "https://github.com/timoth-y/discv5-overlay" }
+discv5-overlay = {git = "https://github.com/timoftime/discv5-overlay" }
 # discv5-overlay = {path = "../trin"}
 lazy_static = "1.4.0"
 
